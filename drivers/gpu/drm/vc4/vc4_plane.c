@@ -28,6 +28,23 @@
 #include "vc4_drv.h"
 #include "vc4_regs.h"
 
+/* For non-alpha-channel formats (RGB, BGA). */
+#define HVS_PIXEL_ORDER_RGB		2
+#define HVS_PIXEL_ORDER_BGR		3
+
+/* The vc4_regs.h versions are incorrect. Redefine below. */
+#undef  HVS_PIXEL_ORDER_BGRX
+#undef  HVS_PIXEL_ORDER_RGBX
+#undef  HVS_PIXEL_ORDER_XBGR
+#undef  HVS_PIXEL_ORDER_XRGB
+
+/* For alpha-channel formats (RGBA, RGBX, etc). */
+/* Note: HVS5 has bit0 inverted for these. */
+#define HVS_PIXEL_ORDER_BGRX		0
+#define HVS_PIXEL_ORDER_RGBX		1
+#define HVS_PIXEL_ORDER_XBGR		2
+#define HVS_PIXEL_ORDER_XRGB		3
+
 static const struct hvs_format {
 	u32 drm; 		/* DRM_FORMAT_* */
 	u32 hvs; 		/* HVS_FORMAT_* */
@@ -37,62 +54,62 @@ static const struct hvs_format {
 	{
 		.drm = DRM_FORMAT_XRGB8888,
 		.hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order_hvs = HVS_PIXEL_ORDER_ABGR,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ARGB,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB^1,
 	},
 	{
 		.drm = DRM_FORMAT_ARGB8888,
 		.hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order_hvs = HVS_PIXEL_ORDER_ABGR,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ARGB,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB^1,
 	},
 	{
 		.drm = DRM_FORMAT_ABGR8888,
 		.hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order_hvs = HVS_PIXEL_ORDER_ARGB,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ABGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR^1,
 	},
 	{
 		.drm = DRM_FORMAT_XBGR8888,
 		.hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order_hvs = HVS_PIXEL_ORDER_ARGB,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ABGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR^1,
 	},
 	{
 		.drm = DRM_FORMAT_RGB565,
 		.hvs = HVS_PIXEL_FORMAT_RGB565,
-		.pixel_order_hvs = HVS_PIXEL_ORDER_XRGB,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_RGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_RGB,
 	},
 	{
 		.drm = DRM_FORMAT_BGR565,
 		.hvs = HVS_PIXEL_FORMAT_RGB565,
-		.pixel_order_hvs = HVS_PIXEL_ORDER_XBGR,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_BGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_BGR,
 	},
 	{
 		.drm = DRM_FORMAT_ARGB1555,
 		.hvs = HVS_PIXEL_FORMAT_RGBA5551,
-		.pixel_order_hvs = HVS_PIXEL_ORDER_ABGR,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ABGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB^1,
 	},
 	{
 		.drm = DRM_FORMAT_XRGB1555,
 		.hvs = HVS_PIXEL_FORMAT_RGBA5551,
-		.pixel_order_hvs = HVS_PIXEL_ORDER_ABGR,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ABGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB^1,
 	},
 	{
 		.drm = DRM_FORMAT_RGB888,
 		.hvs = HVS_PIXEL_FORMAT_RGB888,
-		.pixel_order_hvs = HVS_PIXEL_ORDER_XRGB,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_RGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_RGB,
 	},
 	{
 		.drm = DRM_FORMAT_BGR888,
 		.hvs = HVS_PIXEL_FORMAT_RGB888,
-		.pixel_order_hvs = HVS_PIXEL_ORDER_XBGR,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_BGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_BGR,
 	},
 	{
 		.drm = DRM_FORMAT_YUV422,
@@ -152,25 +169,25 @@ static const struct hvs_format {
 		.drm = DRM_FORMAT_XRGB2101010,
 		.hvs = HVS_PIXEL_FORMAT_RGBA1010102,
 		.pixel_order_hvs = -1,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ARGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB^1,
 	},
 	{
 		.drm = DRM_FORMAT_ARGB2101010,
 		.hvs = HVS_PIXEL_FORMAT_RGBA1010102,
 		.pixel_order_hvs = -1,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ARGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB^1,
 	},
 	{
 		.drm = DRM_FORMAT_ABGR2101010,
 		.hvs = HVS_PIXEL_FORMAT_RGBA1010102,
 		.pixel_order_hvs = -1,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ABGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR^1,
 	},
 	{
 		.drm = DRM_FORMAT_XBGR2101010,
 		.hvs = HVS_PIXEL_FORMAT_RGBA1010102,
 		.pixel_order_hvs = -1,
-		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ABGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR^1,
 	},
 };
 
