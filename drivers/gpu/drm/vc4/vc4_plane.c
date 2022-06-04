@@ -28,264 +28,261 @@
 #include "vc4_drv.h"
 #include "vc4_regs.h"
 
-/* Translate quirkly hardware RGB/HVS identifiers to DRM
- * equivilents to populate the hvs_format table. */
-#define DRM_HVS_PIXEL_ORDER_NONE  (0xffffffff)
-#define DRM_HVS_PIXEL_ORDER_RGB   HVS_PIXEL_ORDER_ARGB
-#define DRM_HVS_PIXEL_ORDER_BGR   HVS_PIXEL_ORDER_ABGR
-#define DRM_HVS_PIXEL_ORDER_BGRX  HVS_PIXEL_ORDER_XBRG
-#define DRM_HVS_PIXEL_ORDER_RGBX  HVS_PIXEL_ORDER_XRBG
-#define DRM_HVS_PIXEL_ORDER_XBGR  HVS_PIXEL_ORDER_XRGB
-#define DRM_HVS_PIXEL_ORDER_XRGB  HVS_PIXEL_ORDER_XBGR
-#define DRM_HVS5_PIXEL_ORDER_BGRX HVS_PIXEL_ORDER_XRBG
-#define DRM_HVS5_PIXEL_ORDER_RGBX HVS_PIXEL_ORDER_XBRG
-#define DRM_HVS5_PIXEL_ORDER_XBGR HVS_PIXEL_ORDER_XBGR
-#define DRM_HVS5_PIXEL_ORDER_XRGB HVS_PIXEL_ORDER_XRGB
-
+/*
+ * DRM to HVS/HVS5 RGB pixel-order is non-intuitive. HVS5 hardware
+ * has a glitch complicating things further.
+ *
+ * DRM Order    HVS Order   HVS5 Order
+ * RGB,BGR      ARGB,ABGR   ARGB,ABGR
+ * RGBX,BGRX    XRBG,XBRG   XBRG,XRBG
+ * XRGB,XBGR    XBGR,XRGB   XRGB,XBGR
+ *
+ * The format list is in drm_fourcc.h order.
+ */
+#define PIXEL_ORDER_NOSUPP (0xffffffff)
 static const struct hvs_format {
 	u32 drm; 		/* DRM_FORMAT_* */
 	u32 hvs; 		/* HVS_FORMAT_* */
-	u32 pixel_order_hvs;	/* DRM_HVS_PIXEL_ORDER_* */
-	u32 pixel_order_hvs5;	/* DRM_HVS_PIXEL_ORDER_* */
+	u32 pixel_order_hvs;	/* HVS_PIXEL_ORDER_* */
+	u32 pixel_order_hvs5;	/* HVS_PIXEL_ORDER_* */
 } hvs_formats[] = {
-/* The format list should match drm_fourcc.h order. */
 	{
 		.drm = DRM_FORMAT_RGB332,
 		.hvs = HVS_PIXEL_FORMAT_RGB332,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_RGB,
-		.pixel_order_hvs5 = DRM_HVS_PIXEL_ORDER_RGB,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_ARGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ARGB,
 	},
 	{
 		.drm = DRM_FORMAT_BGR233,
 		.hvs = HVS_PIXEL_FORMAT_RGB332,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_BGR,
-		.pixel_order_hvs5 = DRM_HVS_PIXEL_ORDER_BGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_ABGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ABGR,
 	},
 
 	{
 		.drm = DRM_FORMAT_XRGB4444,
 		.hvs = HVS_PIXEL_FORMAT_RGBA4444,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_XRGB,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB,
 	},
 	{
 		.drm = DRM_FORMAT_XBGR4444,
 		.hvs = HVS_PIXEL_FORMAT_RGBA4444,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_XBGR,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR,
 	},
 	{
 		.drm = DRM_FORMAT_RGBX4444,
 		.hvs = HVS_PIXEL_FORMAT_RGBA4444,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_RGBX,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_RGBX,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRBG,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBRG,
 	},
 	{
 		.drm = DRM_FORMAT_BGRX4444,
 		.hvs = HVS_PIXEL_FORMAT_RGBA4444,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_BGRX,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_BGRX,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBRG,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRBG,
 	},
 
 	{
 		.drm = DRM_FORMAT_ARGB4444,
 		.hvs = HVS_PIXEL_FORMAT_RGBA4444,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_XRGB,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB,
 	},
 	{
 		.drm = DRM_FORMAT_ABGR4444,
 		.hvs = HVS_PIXEL_FORMAT_RGBA4444,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_XBGR,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR,
 	},
 	{
 		.drm = DRM_FORMAT_RGBA4444,
 		.hvs = HVS_PIXEL_FORMAT_RGBA4444,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_RGBX,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_RGBX,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRBG,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBRG,
 	},
 	{
 		.drm = DRM_FORMAT_BGRA4444,
 		.hvs = HVS_PIXEL_FORMAT_RGBA4444,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_BGRX,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_BGRX,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBRG,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRBG,
 	},
 
 	{
 		.drm = DRM_FORMAT_XRGB1555,
 		.hvs = HVS_PIXEL_FORMAT_RGBA5551,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_XRGB,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB,
 	},
 	{
 		.drm = DRM_FORMAT_XBGR1555,
 		.hvs = HVS_PIXEL_FORMAT_RGBA5551,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_XBGR,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR,
 	},
 	{
 		.drm = DRM_FORMAT_RGBX5551,
 		.hvs = HVS_PIXEL_FORMAT_RGBA5551,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_RGBX,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_RGBX,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRBG,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBRG,
 	},
 	{
 		.drm = DRM_FORMAT_BGRX5551,
 		.hvs = HVS_PIXEL_FORMAT_RGBA5551,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_BGRX,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_BGRX,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBRG,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRBG,
 	},
 
 	{
 		.drm = DRM_FORMAT_ARGB1555,
 		.hvs = HVS_PIXEL_FORMAT_RGBA5551,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_XRGB,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB,
 	},
 	{
 		.drm = DRM_FORMAT_ABGR1555,
 		.hvs = HVS_PIXEL_FORMAT_RGBA5551,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_XBGR,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR,
 	},
 	{
 		.drm = DRM_FORMAT_RGBA5551,
 		.hvs = HVS_PIXEL_FORMAT_RGBA5551,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_RGBX,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_RGBX,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRBG,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBRG,
 	},
 	{
 		.drm = DRM_FORMAT_BGRA5551,
 		.hvs = HVS_PIXEL_FORMAT_RGBA5551,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_BGRX,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_BGRX,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBRG,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRBG,
 	},
 
 	{
 		.drm = DRM_FORMAT_RGB565,
 		.hvs = HVS_PIXEL_FORMAT_RGB565,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_RGB,
-		.pixel_order_hvs5 = DRM_HVS_PIXEL_ORDER_RGB,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_ARGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ARGB,
 	},
 	{
 		.drm = DRM_FORMAT_BGR565,
 		.hvs = HVS_PIXEL_FORMAT_RGB565,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_BGR,
-		.pixel_order_hvs5 = DRM_HVS_PIXEL_ORDER_BGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_ABGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ABGR,
 	},
 
 	{
 		.drm = DRM_FORMAT_RGB888,
 		.hvs = HVS_PIXEL_FORMAT_RGB888,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_RGB,
-		.pixel_order_hvs5 = DRM_HVS_PIXEL_ORDER_RGB,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_ARGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ARGB,
 	},
 	{
 		.drm = DRM_FORMAT_BGR888,
 		.hvs = HVS_PIXEL_FORMAT_RGB888,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_BGR,
-		.pixel_order_hvs5 = DRM_HVS_PIXEL_ORDER_BGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_ABGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_ABGR,
 	},
 
 	{
 		.drm = DRM_FORMAT_XRGB8888,
 		.hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_XRGB,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB,
 	},
 	{
 		.drm = DRM_FORMAT_XBGR8888,
 		.hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_XBGR,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR,
 	},
 	{
 		.drm = DRM_FORMAT_RGBX8888,
 		.hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_RGBX,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_RGBX,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRBG,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBRG,
 	},
 	{
 		.drm = DRM_FORMAT_BGRX8888,
 		.hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_BGRX,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_BGRX,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBRG,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRBG,
 	},
 
 	{
 		.drm = DRM_FORMAT_ARGB8888,
 		.hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_XRGB,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB,
 	},
 	{
 		.drm = DRM_FORMAT_ABGR8888,
 		.hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_XBGR,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR,
 	},
 	{
 		.drm = DRM_FORMAT_RGBA8888,
 		.hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_RGBX,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_RGBX,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XRBG,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBRG,
 	},
 	{
 		.drm = DRM_FORMAT_BGRA8888,
 		.hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_BGRX,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_BGRX,
+		.pixel_order_hvs = HVS_PIXEL_ORDER_XBRG,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRBG,
 	},
 
 	{
 		.drm = DRM_FORMAT_XRGB2101010,
 		.hvs = HVS_PIXEL_FORMAT_RGBA1010102,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_NONE,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs = PIXEL_ORDER_NOSUPP,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB,
 	},
 	{
 		.drm = DRM_FORMAT_XBGR2101010,
 		.hvs = HVS_PIXEL_FORMAT_RGBA1010102,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_NONE,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs = PIXEL_ORDER_NOSUPP,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR,
 	},
 	{
 		.drm = DRM_FORMAT_RGBX1010102,
 		.hvs = HVS_PIXEL_FORMAT_RGBA1010102,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_NONE,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_RGBX,
+		.pixel_order_hvs = PIXEL_ORDER_NOSUPP,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBRG,
 	},
 	{
 		.drm = DRM_FORMAT_BGRX1010102,
 		.hvs = HVS_PIXEL_FORMAT_RGBA1010102,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_NONE,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_BGRX,
+		.pixel_order_hvs = PIXEL_ORDER_NOSUPP,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRBG,
 	},
 
 	{
 		.drm = DRM_FORMAT_ARGB2101010,
 		.hvs = HVS_PIXEL_FORMAT_RGBA1010102,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_NONE,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XRGB,
+		.pixel_order_hvs = PIXEL_ORDER_NOSUPP,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRGB,
 	},
 	{
 		.drm = DRM_FORMAT_ABGR2101010,
 		.hvs = HVS_PIXEL_FORMAT_RGBA1010102,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_NONE,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_XBGR,
+		.pixel_order_hvs = PIXEL_ORDER_NOSUPP,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBGR,
 	},
 	{
 		.drm = DRM_FORMAT_RGBA1010102,
 		.hvs = HVS_PIXEL_FORMAT_RGBA1010102,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_NONE,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_RGBX,
+		.pixel_order_hvs = PIXEL_ORDER_NOSUPP,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XBRG,
 	},
 	{
 		.drm = DRM_FORMAT_BGRA1010102,
 		.hvs = HVS_PIXEL_FORMAT_RGBA1010102,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_NONE,
-		.pixel_order_hvs5 = DRM_HVS5_PIXEL_ORDER_BGRX,
+		.pixel_order_hvs = PIXEL_ORDER_NOSUPP,
+		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XRBG,
 	},
 
 	{
@@ -316,7 +313,7 @@ static const struct hvs_format {
 	{
 		.drm = DRM_FORMAT_P030,
 		.hvs = HVS_PIXEL_FORMAT_YCBCR_10BIT,
-		.pixel_order_hvs = DRM_HVS_PIXEL_ORDER_NONE,
+		.pixel_order_hvs = PIXEL_ORDER_NOSUPP,
 		.pixel_order_hvs5 = HVS_PIXEL_ORDER_XYCBCR,
 	},
 
@@ -1775,8 +1772,8 @@ struct drm_plane *vc4_plane_init(struct drm_device *dev,
 		return ERR_PTR(-ENOMEM);
 
 	for (i = 0; i < ARRAY_SIZE(hvs_formats); i++) {
-                if ((vc4->is_vc5 && hvs_formats[i].pixel_order_hvs5 != DRM_HVS_PIXEL_ORDER_NONE) ||
-                    (!vc4->is_vc5 && hvs_formats[i].pixel_order_hvs != DRM_HVS_PIXEL_ORDER_NONE)) {
+                if ((vc4->is_vc5 && hvs_formats[i].pixel_order_hvs5 != PIXEL_ORDER_NOSUPP) ||
+                    (!vc4->is_vc5 && hvs_formats[i].pixel_order_hvs != PIXEL_ORDER_NOSUPP)) {
 			formats[num_formats] = hvs_formats[i].drm;
 			num_formats++;
 		}
