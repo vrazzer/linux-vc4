@@ -29,15 +29,13 @@
 #include "vc4_regs.h"
 
 /*
- * DRM to HVS/HVS5 RGB pixel-order is non-intuitive. HVS5 hardware
- * has a glitch complicating things further.
+ * DRM to HVS/HVS5 lookup (in drm_fourcc.h order).
+ * RGB pixel-order is non-intuitive.
  *
  * DRM Order    HVS Order   HVS5 Order
  * RGB,BGR      ARGB,ABGR   ARGB,ABGR
  * RGBX,BGRX    XRBG,XBRG   XBRG,XRBG
  * XRGB,XBGR    XBGR,XRGB   XRGB,XBGR
- *
- * The format list is in drm_fourcc.h order.
  */
 #define PIXEL_ORDER_NOSUPP (0xffffffff)
 static const struct hvs_format {
